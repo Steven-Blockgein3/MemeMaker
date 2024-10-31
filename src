@@ -1,0 +1,298 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ImagePlus, Download, Wallet, Shuffle } from 'lucide-react';
+
+const NftMemeMaker = ({ 
+  nftCollectionAddress = '0x1234567890123456789012345678901234567890', 
+  apiKey = 'YOUR_ALCHEMY_OR_OPENSEA_API_KEY' 
+}) => {
+  // Wallet and NFT states
+  const [walletAddress, setWalletAddress] = useState(null);
+  const [ownedNfts, setOwnedNfts] = useState([]);
+  const [currentNft, setCurrentNft] = useState(null);
+
+  // Meme states
+  const [topText, setTopText] = useState('');
+  const [bottomText, setBottomText] = useState('');
+  const [backgroundImage, setBackgroundImage] = useState(null);
+  const [memeColor, setMemeColor] = useState('#000000');
+  
+  // Refs
+  const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+
+  // Fetch NFTs for a specific collection
+  const fetchNftsForCollection = async () => {
+    try {
+      // Using Alchemy API as an example (you'd replace with your preferred NFT API)
+      const response = await fetch(
+        `https://eth-mainnet.alchemyapi.io/v2/${apiKey}/getNFTs/?owner=${walletAddress}&contractAddresses[]=${nftCollectionAddress}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const data = await response.json();
+      
+      // Transform NFT data
+      const nftList = data.ownedNfts.map((nft) => ({
+        id: nft.id.tokenId,
+        name: nft.title || `NFT #${nft.id.tokenId}`,
+        image: nft.media[0]?.gateway || nft.media[0]?.raw,
+        description: nft.description || 'No description'
+      }));
+
+      setOwnedNfts(nftList);
+
+      // Auto-select first NFT if available
+      if (nftList.length > 0) {
+        selectNft(nftList[0]);
+      }
+    } catch (error) {
+      console.error("Error fetching NFTs", error);
+      alert("Failed to fetch NFTs. Check console for details.");
+    }
+  };
+
+  // Connect Wallet
+  const connectWallet = async () => {
+    if (window.ethereum) {
+      try {
+        // Request account access
+        const accounts = await window.ethereum.request({ 
+          method: 'eth_requestAccounts' 
+        });
+        
+        // Set wallet address
+        setWalletAddress(accounts[0]);
+        
+        // Fetch NFTs for the specific collection
+        await fetchNftsForCollection();
+      } catch (error) {
+        console.error("Wallet connection failed", error);
+        alert("Failed to connect wallet. Please try again.");
+      }
+    } else {
+      alert("Please install a Web3 wallet like MetaMask!");
+    }
+  };
+
+  // Fetch Random NFT from Collection
+  const fetchRandomNft = async () => {
+    try {
+      // Using OpenSea API as an example
+      const response = await fetch(
+        `https://api.opensea.io/api/v1/asset/${nftCollectionAddress}/${Math.floor(Math.random() * 10000)}/`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const nftData = await response.json();
+      
+      // Transform NFT data
+      const randomNft = {
+        id: nftData.token_id,
+        name: nftData.name || `NFT #${nftData.token_id}`,
+        image: nftData.image_url,
+        description: nftData.description || 'No description'
+      };
+
+      selectNft(randomNft);
+    } catch (error) {
+      console.error("Error fetching random NFT", error);
+      alert("Failed to fetch random NFT. Check console for details.");
+    }
+  };
+
+  // Select NFT
+  const selectNft = (nft) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      setBackgroundImage(nft.image);
+      setCurrentNft(nft);
+    };
+    img.src = nft.image;
+  };
+
+  // Meme Generation (previous implementation)
+  const generateMeme = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
+      ctx.font = `bold ${canvas.width / 10}px Impact`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = memeColor;
+      ctx.strokeStyle = 'black';
+      ctx.lineWidth = canvas.width / 100;
+      
+      if (topText) {
+        ctx.fillText(topText, canvas.width / 2, canvas.height / 6);
+        ctx.strokeText(topText, canvas.width / 2, canvas.height / 6);
+      }
+      
+      if (bottomText) {
+        ctx.fillText(bottomText, canvas.width / 2, canvas.height * 5/6);
+        ctx.strokeText(bottomText, canvas.width / 2, canvas.height * 5/6);
+      }
+    };
+    img.src = backgroundImage;
+  };
+
+  // Download Meme (previous implementation)
+  const downloadMeme = () => {
+    if (backgroundImage) {
+      generateMeme();
+      const canvas = canvasRef.current;
+      const link = document.createElement('a');
+      link.download = `nft-meme-${currentNft ? currentNft.name : 'random'}.png`;
+      link.href = canvas.toDataURL();
+      link.click();
+    }
+  };
+
+  // Render component (similar to previous version)
+  return (
+    <div className="container mx-auto p-4 max-w-md">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-center">NFT Meme Maker</CardTitle>
+          <p className="text-center text-sm text-gray-500">
+            Collection: {nftCollectionAddress}
+          </p>
+        </CardHeader>
+        <CardContent>
+          {/* Wallet Connection */}
+          <div className="mb-4">
+            {!walletAddress ? (
+              <Button onClick={connectWallet} className="w-full">
+                <Wallet className="mr-2" /> Connect Wallet
+              </Button>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span>
+                  Connected: {walletAddress.substring(0, 6)}...
+                  {walletAddress.substring(walletAddress.length - 4)}
+                </span>
+                <Button variant="outline" onClick={() => setWalletAddress(null)}>
+                  Disconnect
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* NFT Selection */}
+          <div className="mb-4 space-y-2">
+            {walletAddress && ownedNfts.length > 0 ? (
+              <>
+                <select 
+                  onChange={(e) => selectNft(ownedNfts[e.target.selectedIndex])}
+                  className="w-full p-2 border rounded mb-2"
+                >
+                  {ownedNfts.map((nft, index) => (
+                    <option key={index} value={nft.id}>
+                      {nft.name}
+                    </option>
+                  ))}
+                </select>
+
+                {/* NFT Image Preview */}
+                {backgroundImage && (
+                  <div className="w-full flex justify-center mb-2">
+                    <img 
+                      src={backgroundImage} 
+                      alt="Selected NFT" 
+                      className="max-w-full h-auto max-h-64 object-contain border rounded"
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <Button 
+                onClick={fetchRandomNft} 
+                className="w-full"
+                variant="secondary"
+              >
+                <Shuffle className="mr-2" /> Fetch Random NFT
+              </Button>
+            )}
+          </div>
+
+          {/* If no NFT is selected, show a placeholder */}
+          {!backgroundImage && (
+            <div className="w-full h-64 border-2 border-dashed flex items-center justify-center text-gray-400 mb-4">
+              No NFT Selected
+            </div>
+          )}
+
+          {/* Rest of the component remains the same */}
+          {/* Meme Text Inputs, Color Picker, Meme Buttons */}
+          <div className="space-y-2 mb-4">
+            <Input 
+              placeholder="Top Text" 
+              value={topText}
+              onChange={(e) => setTopText(e.target.value)}
+            />
+            <Input 
+              placeholder="Bottom Text" 
+              value={bottomText}
+              onChange={(e) => setBottomText(e.target.value)}
+            />
+          </div>
+
+          <div className="flex items-center space-x-2 mb-4">
+            <Input 
+              type="color" 
+              value={memeColor}
+              onChange={(e) => setMemeColor(e.target.value)}
+              className="w-full"
+            />
+            <span>Text Color</span>
+          </div>
+
+          <div className="space-y-2">
+            <Button 
+              onClick={generateMeme} 
+              className="w-full"
+              disabled={!backgroundImage}
+            >
+              Generate Meme
+            </Button>
+            <Button 
+              onClick={downloadMeme} 
+              className="w-full"
+              disabled={!backgroundImage}
+            >
+              Download Meme
+            </Button>
+          </div>
+
+          {/* Hidden Canvas */}
+          <canvas 
+            ref={canvasRef} 
+            className="hidden"
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
+
+export default NftMemeMaker;
